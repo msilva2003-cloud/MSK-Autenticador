@@ -1,4 +1,7 @@
 #include "authenticator.h"
+#include "update.h"
+#include "qr_export.h"
+#include "camera.h"
 
 #include <windows.h>
 #include <windowsx.h>
@@ -24,6 +27,7 @@ constexpr wchar_t window_class[] = L"MSKAuthenticatorWindow";
 constexpr UINT_PTR timer_refresh = 1;
 constexpr int edit_account = 1001;
 constexpr int delete_account = 1002;
+constexpr int export_account = 1003;
 
 std::wstring account_title(const auth::Account& account);
 
@@ -46,6 +50,9 @@ struct State {
     POINT drag_start{};
     bool dragging = false;
     std::chrono::steady_clock::time_point last_action = std::chrono::steady_clock::now();
+    std::shared_ptr<update::Result> update_result;
+    bool update_handled = false;
+    std::chrono::steady_clock::time_point last_update_check{};
 };
 
 Color rgb(BYTE r, BYTE g, BYTE b) { return Color(255, r, g, b); }
@@ -98,8 +105,8 @@ bool inside(RectF area, float x, float y) {
 }
 
 float content_top(const State& state) { return scale(state, 237); }
-float card_height(const State& state) { return scale(state, 86); }
-float card_step(const State& state) { return scale(state, 94); }
+float card_height(const State& state) { return scale(state, 100); }
+float card_step(const State& state) { return scale(state, 108); }
 
 RectF card_bounds(const State& state, float width, int index) {
     return RectF(scale(state, 28), content_top(state) + index * card_step(state) - state.scroll,
@@ -108,14 +115,15 @@ RectF card_bounds(const State& state, float width, int index) {
 
 RectF code_bounds(const State& state, float width, int index) {
     auto card = card_bounds(state, width, index);
-    return RectF(card.GetRight() - scale(state, 190), card.Y + scale(state, 9),
-                 scale(state, 177), scale(state, 43));
+    return RectF(card.GetRight() - scale(state, 155), card.Y + scale(state, 9),
+                 scale(state, 142), scale(state, 43));
 }
 
 RectF action_bounds(const State& state, float width, int index, int action) {
     auto card = card_bounds(state, width, index);
-    return RectF(card.X + scale(state, action == edit_account ? 196.0f : 268.0f),
-                 card.Y + scale(state, 56), scale(state, 65), scale(state, 21));
+    const float offset = action == edit_account ? 60.0f : action == delete_account ? 128.0f : 196.0f;
+    return RectF(card.X + scale(state, offset),
+                 card.Y + scale(state, 74), scale(state, 65), scale(state, 21));
 }
 
 int account_at(const State& state, float width, float height, float x, float y) {
@@ -149,19 +157,7 @@ void show(State& state) {
     InvalidateRect(state.window, nullptr, FALSE);
 }
 
-void import_qr(State& state) {
-    wchar_t filename[MAX_PATH]{};
-    OPENFILENAMEW options{};
-    options.lStructSize = sizeof(options);
-    options.hwndOwner = state.window;
-    options.lpstrFilter = L"Imagens de QR\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff\0Todos os arquivos\0*.*\0";
-    options.lpstrFile = filename;
-    options.nMaxFile = MAX_PATH;
-    options.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-    if (!GetOpenFileNameW(&options)) return;
-
-    auto imported = auth::read_qr_image(filename);
-    SecureZeroMemory(filename, sizeof(filename));
+void add_imported(State& state, std::vector<auth::Account> imported) {
     auto full = auth::load_vault();
     int added = 0;
     for (auto& account : imported) {
@@ -188,6 +184,47 @@ void import_qr(State& state) {
     }
     state.notice = std::to_wstring(added) + L" conta(s) importada(s). Se houver vários QRs, importe cada imagem.";
     InvalidateRect(state.window, nullptr, FALSE);
+}
+
+void import_qr(State& state) {
+    HMENU menu = CreatePopupMenu();
+    if (!menu) throw std::runtime_error("Menu indisponivel");
+    AppendMenuW(menu, MF_STRING, 1, L"Escolher imagem de QR...");
+    AppendMenuW(menu, MF_STRING, 2, L"Ler QR pela câmera...");
+    POINT position{static_cast<LONG>(scale(state, 28)), static_cast<LONG>(scale(state, 205))};
+    ClientToScreen(state.window, &position);
+    const auto choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN,
+                                       position.x, position.y, 0, state.window, nullptr);
+    DestroyMenu(menu);
+    if (choice == 2) {
+        try {
+            auto imported = camera::scan(state.window);
+            if (!imported.empty()) add_imported(state, std::move(imported));
+        } catch (const std::exception&) {
+            MessageBoxW(state.window,
+                L"Não foi possível ler a câmera. Verifique a conexão e a permissão de câmera no Windows.",
+                L"MSK Autenticador", MB_OK | MB_ICONERROR);
+        }
+        return;
+    }
+    if (choice != 1) return;
+    wchar_t filename[MAX_PATH]{};
+    OPENFILENAMEW options{};
+    options.lStructSize = sizeof(options);
+    options.hwndOwner = state.window;
+    options.lpstrFilter = L"Imagens de QR\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff\0Todos os arquivos\0*.*\0";
+    options.lpstrFile = filename;
+    options.nMaxFile = MAX_PATH;
+    options.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (!GetOpenFileNameW(&options)) return;
+    try {
+        auto imported = auth::read_qr_image(filename);
+        SecureZeroMemory(filename, sizeof(filename));
+        add_imported(state, std::move(imported));
+    } catch (...) {
+        SecureZeroMemory(filename, sizeof(filename));
+        throw;
+    }
 }
 
 void act(State& state, int id) {
@@ -441,15 +478,15 @@ void draw_card(Graphics& graphics, const State& state, const auth::Account& acco
     label(graphics, state, initial, avatar, 18, rgb(145, 242, 204), true, StringAlignmentCenter);
 
     const float text_x = x + scale(state, 63);
-    const float right_panel = scale(state, 190);
-    const float left_width = std::max(scale(state, 100), bounds.Width - right_panel - scale(state, 72));
+    const float right_panel = scale(state, 155);
+    const float left_width = std::max(scale(state, 95), bounds.Width - right_panel - scale(state, 72));
     label(graphics, state, title, RectF(text_x, y + scale(state, 8), left_width, scale(state, 24)),
           14, rgb(234, 244, 248), true);
     const auto secondary = account.issuer.empty() ? L"Autenticação de dois fatores" : account.name;
     label(graphics, state, secondary, RectF(text_x, y + scale(state, 30), left_width, scale(state, 20)),
           10, rgb(151, 174, 191));
     label(graphics, state, L"TOTP   ·   " + std::to_wstring(account.digits) + L" dígitos",
-          RectF(text_x, y + scale(state, 58), left_width, scale(state, 18)),
+          RectF(text_x, y + scale(state, 53), left_width, scale(state, 18)),
           9, rgb(111, 203, 176), true);
 
     const float code_x = bounds.GetRight() - right_panel;
@@ -458,7 +495,7 @@ void draw_card(Graphics& graphics, const State& state, const auth::Account& acco
     if (state.revealed) code.insert(code.size() / 2, L" ");
     label(graphics, state, code,
           RectF(code_x, y + scale(state, 8), right_panel - scale(state, 13), scale(state, 41)),
-          23, state.revealed ? rgb(250, 253, 251) : rgb(104, 132, 149), true,
+          20, state.revealed ? rgb(250, 253, 251) : rgb(104, 132, 149), true,
           StringAlignmentFar);
     if (state.revealed) SecureZeroMemory(code.data(), code.size() * sizeof(wchar_t));
 
@@ -467,8 +504,8 @@ void draw_card(Graphics& graphics, const State& state, const auth::Account& acco
         label(graphics, state, L"Renova em " + std::to_wstring(remaining) + L" s",
               RectF(code_x, y + scale(state, 51), right_panel - scale(state, 13), scale(state, 17)),
               9, rgb(153, 175, 190), false, StringAlignmentFar);
-        RectF track(code_x + scale(state, 27), y + scale(state, 75),
-                    right_panel - scale(state, 40), scale(state, 3));
+        RectF track(code_x + scale(state, 18), y + scale(state, 88),
+                    right_panel - scale(state, 31), scale(state, 3));
         rounded(graphics, track, scale(state, 2), rgb(42, 62, 79));
         track.Width *= static_cast<float>(remaining) / account.period;
         rounded(graphics, track, scale(state, 2), rgb(99, 224, 179));
@@ -483,6 +520,9 @@ void draw_card(Graphics& graphics, const State& state, const auth::Account& acco
     label(graphics, state, L"Excluir",
           action_bounds(state, width, index, delete_account),
           9, rgb(214, 156, 157), false, StringAlignmentCenter);
+    label(graphics, state, L"Exportar",
+          action_bounds(state, width, index, export_account),
+          9, rgb(139, 204, 190), false, StringAlignmentCenter);
 }
 
 void draw_tip(Graphics& graphics, const State& state, float width, float y) {
@@ -493,7 +533,7 @@ void draw_tip(Graphics& graphics, const State& state, float width, float y) {
     label(graphics, state, L"Privacidade primeiro",
           RectF(x + scale(state, 20), y + scale(state, 13), bounds.Width - scale(state, 40), scale(state, 27)),
           14, rgb(217, 235, 239), true);
-    label(graphics, state, L"Chaves protegidas pelo Windows  •  Sem servidor na internet  •  QR lido localmente",
+    label(graphics, state, L"Chaves no cofre local do Windows.",
           RectF(x + scale(state, 20), y + scale(state, 48), bounds.Width - scale(state, 40), scale(state, 26)),
           12, rgb(137, 163, 179));
 }
@@ -517,7 +557,7 @@ void paint(HWND window, State& state, HDC hdc) {
         graphics.DrawImage(&icon_image, brand);
     }
     label(graphics, state, L"MSK  AUTENTICADOR",
-          RectF(scale(state, 69), scale(state, 13), scale(state, 250), scale(state, 30)),
+          RectF(scale(state, 69), scale(state, 13), scale(state, 218), scale(state, 30)),
           13, rgb(224, 239, 242), true);
     RectF pill(w - scale(state, 158), scale(state, 17), scale(state, 130), scale(state, 23));
     rounded(graphics, pill, scale(state, 13), rgb(24, 57, 53));
@@ -533,12 +573,12 @@ void paint(HWND window, State& state, HDC hdc) {
           RectF(hero.X + scale(state, 20), hero.Y + scale(state, 10),
                 hero.Width - scale(state, 40), scale(state, 33)),
           18, rgb(242, 250, 249), true);
-    label(graphics, state, L"Autenticação local para suas contas. O cofre pertence ao seu usuário do Windows.",
+    label(graphics, state, L"Códigos locais, protegidos pelo Windows.",
           RectF(hero.X + scale(state, 20), hero.Y + scale(state, 45),
                 hero.Width - scale(state, 40), scale(state, 20)),
           10, rgb(159, 191, 199));
 
-    draw_button(graphics, state, 0, L"+  Importar QR");
+    draw_button(graphics, state, 0, L"+  Adicionar QR");
     draw_button(graphics, state, 1, state.revealed ? L"Ocultar códigos" : L"Mostrar códigos");
     if (state.copied_toast_visible) {
         RectF toast(w - margin - scale(state, 112), scale(state, 167),
@@ -608,6 +648,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(dark));
             SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(owned.release()));
             SetTimer(window, timer_refresh, 1000, nullptr);
+            if (update::installed_copy()) {
+                auto* current = reinterpret_cast<State*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+                current->update_result = std::make_shared<update::Result>();
+                current->last_update_check = std::chrono::steady_clock::now();
+                update::check_in_background(current->update_result);
+            }
             return 0;
         }
         case WM_ERASEBKGND:
@@ -637,7 +683,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         case WM_GETMINMAXINFO: {
             auto* info = reinterpret_cast<MINMAXINFO*>(lparam);
             const float dpi = state ? state->dpi : static_cast<float>(GetDpiForSystem()) / 96.0f;
-            info->ptMinTrackSize = POINT{static_cast<LONG>(650 * dpi), static_cast<LONG>(420 * dpi)};
+            info->ptMinTrackSize = POINT{static_cast<LONG>(480 * dpi), static_cast<LONG>(420 * dpi)};
             return 0;
         }
         case WM_TIMER:
@@ -654,6 +700,35 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 if (state->revealed &&
                     std::chrono::steady_clock::now() - state->last_action > std::chrono::minutes(5)) hide(*state);
                 else if (state->revealed) InvalidateRect(window, nullptr, FALSE);
+                if (state->update_result && !state->update_handled &&
+                    std::chrono::steady_clock::now() - state->last_action > std::chrono::seconds(30)) {
+                    auto result = state->update_result;
+                    bool finished = false;
+                    bool available = false;
+                    {
+                        std::lock_guard lock(result->mutex);
+                        finished = result->finished;
+                        available = result->available;
+                    }
+                    if (finished) {
+                        state->update_handled = true;
+                        if (available) {
+                            if (update::launch_verified(*result)) {
+                                DestroyWindow(window);
+                                return 0;
+                            }
+                            state->notice = L"Atualização indisponível. O aplicativo continua funcionando.";
+                            InvalidateRect(window, nullptr, FALSE);
+                        }
+                    }
+                }
+                if (state->update_result && state->update_handled &&
+                    std::chrono::steady_clock::now() - state->last_update_check >= std::chrono::hours(6)) {
+                    state->update_result = std::make_shared<update::Result>();
+                    state->update_handled = false;
+                    state->last_update_check = std::chrono::steady_clock::now();
+                    update::check_in_background(state->update_result);
+                }
             }
             return 0;
         case WM_MOUSEMOVE:
@@ -694,6 +769,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                         for (int i = 0; i < static_cast<int>(state->accounts.size()); ++i) {
                             if (inside(action_bounds(*state, static_cast<float>(area.right), i, edit_account), x, y) ||
                                 inside(action_bounds(*state, static_cast<float>(area.right), i, delete_account), x, y) ||
+                                inside(action_bounds(*state, static_cast<float>(area.right), i, export_account), x, y) ||
                                 (state->revealed && inside(code_bounds(*state, static_cast<float>(area.right), i), x, y))) {
                                 hovered = 2;
                                 break;
@@ -741,6 +817,23 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                         }
                         if (inside(action_bounds(*state, static_cast<float>(area.right), i, delete_account), x, y)) {
                             change_account(*state, i, delete_account);
+                            return 0;
+                        }
+                        if (inside(action_bounds(*state, static_cast<float>(area.right), i, export_account), x, y)) {
+                            hide(*state);
+                            auto full = auth::load_vault();
+                            if (i >= static_cast<int>(full.size()) ||
+                                full[i].name != state->accounts[i].name ||
+                                full[i].issuer != state->accounts[i].issuer)
+                                throw std::runtime_error("A lista de contas mudou");
+                            if (full[i].period != 30) {
+                                MessageBoxW(window,
+                                    L"O Google Authenticator não aceita a exportação desta conta com período diferente de 30 segundos.",
+                                    L"Exportar QR", MB_OK | MB_ICONINFORMATION);
+                                return 0;
+                            }
+                            qr_export::show(window, full[i]);
+                            state->last_action = std::chrono::steady_clock::now();
                             return 0;
                         }
                     }
@@ -883,7 +976,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     const float dpi = static_cast<float>(GetDpiForSystem()) / 96.0f;
     const int work_width = work.right - work.left;
     const int work_height = work.bottom - work.top;
-    const int width = std::min(static_cast<int>(960 * dpi), work_width - static_cast<int>(28 * dpi));
+    const int width = std::min(static_cast<int>(480 * dpi), work_width - static_cast<int>(28 * dpi));
     const int height = std::min(static_cast<int>(680 * dpi), work_height - static_cast<int>(28 * dpi));
     const int x = work.left + (work_width - width) / 2;
     const int y = work.top + (work_height - height) / 2;

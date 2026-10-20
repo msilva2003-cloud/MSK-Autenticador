@@ -2,7 +2,7 @@
 
 <img src="assets/logo.png" alt="Logo do MSK Autenticador" width="96">
 
-Aplicativo nativo em C++20 para Windows 10/11. Não abre porta de rede nem usa navegador. Lê QRs TOTP de imagens com Windows Imaging Component e ZXing-C++, calcula códigos com CNG/Bcrypt e guarda as contas em um cofre DPAPI do usuário atual.
+Aplicativo nativo em C++20 para Windows 10/11. Lê QRs TOTP de imagens ou pela câmera, calcula códigos com CNG/Bcrypt e guarda as contas em um cofre DPAPI do usuário atual. A cópia instalada consulta periodicamente o GitHub para detectar atualizações; não envia chaves ou códigos.
 
 ## Baixar
 
@@ -10,7 +10,11 @@ Baixe o instalador `MSK-Autenticador-Setup-...exe` ou o ZIP portátil da versão
 
 ## Usar
 
-Abra o executável em dist/MSKAuthenticator.exe. Clique em **Mostrar códigos** para visualizar os códigos. Dê dois cliques sobre um código visível para copiá-lo sem espaços. O aviso **Copiado** desaparece após dois segundos; a cópia será removida da área de transferência após 30 segundos, se ainda estiver lá. Os códigos continuam visíveis ao alternar para outra janela e são ocultados após cinco minutos sem interação ou ao clicar em **Ocultar códigos**. Arraste um cartão pela área de texto para mudar sua posição; a nova ordem é salva no cofre. Use **Renomear** para alterar o título exibido de uma conta e **Excluir** para removê-la do cofre após confirmação. Clique em **Importar QR** para adicionar uma imagem PNG, JPG, BMP, GIF ou TIFF. Se o Google Authenticator dividir a exportação em vários QRs, importe cada imagem.
+Abra o aplicativo e clique em **Mostrar códigos** para visualizar os códigos. Dê dois cliques sobre um código visível para copiá-lo sem espaços. O aviso **Copiado** desaparece após dois segundos; a cópia será removida da área de transferência após 30 segundos, se ainda estiver lá. Os códigos continuam visíveis ao alternar para outra janela e são ocultados após cinco minutos sem interação ou ao clicar em **Ocultar códigos**. Arraste um cartão pela área de texto para mudar sua posição; a nova ordem é salva no cofre. Use **Renomear** para alterar o título exibido de uma conta e **Excluir** para removê-la do cofre após confirmação. Em **Adicionar QR**, escolha uma imagem PNG, JPG, BMP, GIF ou TIFF ou abra a câmera para ler o código diretamente. Se o Google Authenticator dividir a exportação em vários QRs, importe cada imagem ou leia cada QR pela câmera.
+
+Use **Exportar** no cartão de uma conta para mostrar um QR `otpauth://` que o Google Authenticator pode ler. A exportação é individual e não grava imagem em disco. O QR contém a chave secreta: feche a janela após importá-lo e evite capturas de tela. Contas com período diferente de 30 segundos não podem ser exportadas nesse formato.
+
+Na cópia instalada pelo Inno Setup, o aplicativo consulta o release estável mais recente no GitHub ao abrir e a cada seis horas. Quando encontra uma versão maior, baixa o instalador e o arquivo SHA-256 do mesmo release, confere o arquivo e instala em silêncio após 30 segundos sem interação. O cofre permanece em `%LOCALAPPDATA%\MSKAuthenticator\vault.dpapi`. A edição portátil não faz atualização automática. A versão 0.1.4 e seu instalador ainda não têm assinatura digital; a atualização depende da integridade da conta e do release no GitHub.
 
 O cofre fica em `%LOCALAPPDATA%\MSKAuthenticator\vault.dpapi`. A imagem do QR continua no local de origem; remova essa cópia quando não precisar dela. Não coloque QRs ou backups sem criptografia em pastas sincronizadas ou no repositório.
 
@@ -18,7 +22,7 @@ Em outro computador, abra o executável e importe os QRs novamente. O arquivo DP
 
 ## Segurança e limites
 
-- O aplicativo não transmite chaves, códigos ou metadados para a internet. Não registra códigos em logs. A área de transferência só recebe um código quando você dá dois cliques nele; outros aplicativos da sua sessão Windows podem ler o código enquanto ele estiver copiado.
+- O aplicativo não transmite chaves nem códigos para a internet. Para atualizar, consulta a API e os arquivos de release do GitHub, que recebem a conexão de rede do seu computador. Não registra códigos em logs. A área de transferência só recebe um código quando você dá dois cliques nele; outros aplicativos da sua sessão Windows podem ler o código enquanto ele estiver copiado.
 - O cofre é cifrado pelo DPAPI do usuário Windows. As chaves são carregadas ao mostrar os códigos e os buffers de chaves controlados pelo aplicativo são limpos ao ocultá-los. Bibliotecas e o próprio Windows podem criar cópias temporárias fora do controle do aplicativo.
 - Um malware executado na sessão desbloqueada do mesmo usuário, uma captura de tela ou alguém diante do monitor podem obter os códigos. Bloqueie o Windows quando se afastar. DPAPI não resolve esse cenário sozinho.
 - O executável e o instalador ainda não têm assinatura de código. Antes de distribuir amplamente, são recomendados revisão de segurança independente, assinatura e ensaio em máquinas limpas.

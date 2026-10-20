@@ -431,11 +431,24 @@ std::vector<Account> read_qr_image(const std::wstring& path) {
     Bytes pixels(static_cast<std::size_t>(width) * height * 4);
     if (FAILED(converter->CopyPixels(nullptr, width * 4, static_cast<UINT>(pixels.size()), pixels.data())))
         throw std::runtime_error("Leitura de pixels falhou");
-    auto image = ZXing::ImageView(pixels.data(), static_cast<int>(width), static_cast<int>(height),
+    try {
+        auto accounts = read_qr_pixels(pixels.data(), static_cast<int>(width), static_cast<int>(height));
+        wipe(pixels);
+        return accounts;
+    } catch (...) {
+        wipe(pixels);
+        throw;
+    }
+}
+
+std::vector<Account> read_qr_pixels(const std::uint8_t* pixels, int width, int height) {
+    if (!pixels || width <= 0 || height <= 0 ||
+        static_cast<std::uint64_t>(width) * height > 25'000'000)
+        throw std::runtime_error("Imagem de QR invalida");
+    auto image = ZXing::ImageView(pixels, width, height,
                                    ZXing::ImageFormat::BGRA);
     auto options = ZXing::ReaderOptions().setFormats(ZXing::BarcodeFormat::QRCode);
     auto codes = ZXing::ReadBarcodes(image, options);
-    wipe(pixels);
     std::vector<Account> accounts;
     int recognized = 0;
     for (const auto& code : codes) {

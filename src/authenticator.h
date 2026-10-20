@@ -26,6 +26,7 @@ std::wstring vault_path();
 std::vector<Account> load_vault();
 void save_vault(const std::vector<Account>& accounts);
 std::vector<Account> read_qr_image(const std::wstring& path);
+std::vector<Account> read_qr_pixels(const std::uint8_t* pixels, int width, int height);
 std::wstring totp(const Account& account, std::int64_t unix_seconds);
 void wipe(std::vector<std::uint8_t>& data) noexcept;
 

@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## 0.1.4 — janela estreita, câmera, exportação e atualização
+
+- Largura inicial reduzida de 960 para 480 pontos lógicos, com cartões reorganizados.
+- Importação de QR pela câmera do computador.
+- Exportação individual de conta TOTP como QR para Google Authenticator, somente na tela.
+- Verificação automática de releases estáveis no GitHub, conferência de SHA-256 e instalação silenciosa na edição instalada.
+- Inclusão da licença do libzint, usado para gerar QRs.
+
 ## 0.1.3 — pacote inicial para GitHub
 
 - Aplicativo nativo para Windows x64 com cofre local protegido por DPAPI.

@@ -1,4 +1,4 @@
-#define AppVersion "0.1.3"
+#define AppVersion "0.1.4"
 
 [Setup]
 AppId={{F49226CA-C6FD-4059-A70B-AB95EFD9EFEA}
@@ -34,6 +34,7 @@ Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; GroupDesc
 Source: "build\Release\MSKAuthenticator.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE-ZXing.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "LICENSE-Zint.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\MSK Autenticador"; Filename: "{app}\MSKAuthenticator.exe"; WorkingDir: "{app}"
@@ -42,5 +43,20 @@ Name: "{autodesktop}\MSK Autenticador"; Filename: "{app}\MSKAuthenticator.exe"; 
 [Run]
 Filename: "{app}\MSKAuthenticator.exe"; Description: "Abrir MSK Autenticador"; Flags: nowait postinstall skipifsilent
 
-; O cofre fica em %LOCALAPPDATA%\MSKAuthenticator, fora de {app}.
-; A desinstalacao nao remove nem exporta os segredos do usuario.
+[Code]
+function IsAutoUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:AUTOUPDATE|0}') = '1';
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ErrorCode: Integer;
+begin
+  if (CurStep = ssPostInstall) and IsAutoUpdate then
+    ShellExec('', ExpandConstant('{app}\MSKAuthenticator.exe'), '', ExpandConstant('{app}'),
+      SW_SHOWNORMAL, ewNoWait, ErrorCode);
+end;
+
+// O cofre fica em %LOCALAPPDATA%\MSKAuthenticator, fora de {app}.
+// A desinstalacao nao remove nem exporta os segredos do usuario.
