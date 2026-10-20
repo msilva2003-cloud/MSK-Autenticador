@@ -6,7 +6,7 @@ Aplicativo nativo em C++20 para Windows 10/11. Não abre porta de rede nem usa n
 
 ## Baixar
 
-Baixe o ZIP da versão desejada na página **Releases** deste repositório e confira o SHA-256 publicado junto ao arquivo. Extraia o ZIP para uma pasta local e abra `MSKAuthenticator.exe`. O aplicativo é portátil e não precisa de instalador. O executável ainda não possui assinatura digital; o Windows pode exibir um aviso de publicador desconhecido.
+Baixe o instalador `MSK-Autenticador-Setup-...exe` ou o ZIP portátil da versão desejada na página **Releases** deste repositório e confira o SHA-256 publicado junto ao arquivo. O instalador cria atalhos e permite desinstalação. Para usar o ZIP, extraia-o para uma pasta local e abra `MSKAuthenticator.exe`. O executável e o instalador ainda não possuem assinatura digital; o Windows pode exibir um aviso de publicador desconhecido.
 
 ## Usar
 
@@ -21,7 +21,7 @@ Em outro computador, abra o executável e importe os QRs novamente. O arquivo DP
 - O aplicativo não transmite chaves, códigos ou metadados para a internet. Não registra códigos em logs. A área de transferência só recebe um código quando você dá dois cliques nele; outros aplicativos da sua sessão Windows podem ler o código enquanto ele estiver copiado.
 - O cofre é cifrado pelo DPAPI do usuário Windows. As chaves são carregadas ao mostrar os códigos e os buffers de chaves controlados pelo aplicativo são limpos ao ocultá-los. Bibliotecas e o próprio Windows podem criar cópias temporárias fora do controle do aplicativo.
 - Um malware executado na sessão desbloqueada do mesmo usuário, uma captura de tela ou alguém diante do monitor podem obter os códigos. Bloqueie o Windows quando se afastar. DPAPI não resolve esse cenário sozinho.
-- O executável ainda não tem assinatura de código nem instalador. Antes de distribuir amplamente, são necessários revisão de segurança independente, assinatura e ensaio em máquinas limpas.
+- O executável e o instalador ainda não têm assinatura de código. Antes de distribuir amplamente, são recomendados revisão de segurança independente, assinatura e ensaio em máquinas limpas.
 - Esta versão nativa não preenche códigos automaticamente no navegador.
 
 Não abra issues com capturas de QR, chaves, códigos TOTP ou arquivos de cofre. Para relatar uma possível falha de segurança, use uma mensagem privada ao mantenedor.
@@ -35,3 +35,5 @@ Com Visual Studio 2022 Build Tools e CMake, execute:
 
 O CMake obtém ZXing-C++ v3.1.1 na configuração inicial. O arquivo final é build/Release/MSKAuthenticator.exe.
 O ícone da aplicação está em assets/app.ico e é incorporado ao executável como recurso Windows.
+
+Para gerar o instalador, instale [Inno Setup 7](https://jrsoftware.org/isdl.php) e execute `ISCC.exe installer.iss` depois da compilação C++. O script instala o aplicativo apenas para o usuário atual e preserva o cofre `%LOCALAPPDATA%\MSKAuthenticator\vault.dpapi` na desinstalação. Para uso comercial do compilador, consulte os [termos do Inno Setup](https://jrsoftware.org/isorder.php).

@@ -7,5 +7,6 @@
 - Interface compacta com renomeação, exclusão e ordenação das contas por arraste.
 - Cópia do código por duplo clique, aviso temporário e limpeza condicional da área de transferência após 30 segundos.
 - Ícone próprio incorporado ao executável.
+- Instalador por usuário criado com Inno Setup 7, com atalhos e desinstalação que preserva o cofre local.
 
 O executável não possui assinatura digital e esta versão ainda não passou por revisão de segurança independente nem ensaio em computadores limpos.
