@@ -1,4 +1,5 @@
 #include "authenticator.h"
+#include "access.h"
 #include "update.h"
 #include "qr_export.h"
 #include "camera.h"
@@ -52,7 +53,10 @@ struct State {
     std::chrono::steady_clock::time_point last_action = std::chrono::steady_clock::now();
     std::shared_ptr<update::Result> update_result;
     bool update_handled = false;
-    std::chrono::steady_clock::time_point last_update_check{};
+    bool about_page = false;
+    bool update_available = false;
+    bool manual_update_check = false;
+    std::wstring about_status = L"Clique em Verificar atualizações para consultar o GitHub.";
 };
 
 Color rgb(BYTE r, BYTE g, BYTE b) { return Color(255, r, g, b); }
@@ -95,13 +99,42 @@ void line(Graphics& graphics, Color color, float x1, float y1, float x2, float y
 }
 
 RectF button_rect(const State& state, int id) {
-    const float x = scale(state, 28), y = scale(state, 167);
+    const float x = scale(state, 28), y = scale(state, state.about_page ? 225.0f : 167.0f);
     if (id == 0) return RectF(x, y, scale(state, 145), scale(state, 35));
     return RectF(x + scale(state, 155), y, scale(state, 155), scale(state, 35));
 }
 
 bool inside(RectF area, float x, float y) {
     return x >= area.X && x <= area.GetRight() && y >= area.Y && y <= area.GetBottom();
+}
+
+RectF about_tab_bounds(const State& state, float width) {
+    return RectF(width - scale(state, 96), scale(state, 13), scale(state, 68), scale(state, 32));
+}
+
+void draw_about_tab(Graphics& graphics, const State& state, float width) {
+    const auto bounds = about_tab_bounds(state, width);
+    const Color fill = state.hovered == 10 ? rgb(33, 51, 70) : rgb(24, 39, 56);
+    const Color border = rgb(58, 79, 100);
+    rounded(graphics, bounds, scale(state, 8), fill, &border, scale(state, 1));
+    label(graphics, state, state.about_page ? L"Contas" : L"Sobre", bounds, 10,
+          rgb(225, 238, 247), true, StringAlignmentCenter);
+}
+
+void begin_update_check(State& state) {
+    if (!update::installed_copy()) {
+        state.about_status = L"Atualizações pelo aplicativo estão disponíveis na cópia instalada.";
+        state.update_available = false;
+        InvalidateRect(state.window, nullptr, FALSE);
+        return;
+    }
+    state.update_result = std::make_shared<update::Result>();
+    state.update_handled = false;
+    state.manual_update_check = true;
+    state.update_available = false;
+    state.about_status = L"Buscando versão e conferindo o instalador...";
+    update::check_in_background(state.update_result);
+    InvalidateRect(state.window, nullptr, FALSE);
 }
 
 float content_top(const State& state) { return scale(state, 237); }
@@ -186,16 +219,45 @@ void add_imported(State& state, std::vector<auth::Account> imported) {
     InvalidateRect(state.window, nullptr, FALSE);
 }
 
+void paste_qr(State& state) {
+    if (!OpenClipboard(state.window)) {
+        state.notice = L"A área de transferência está ocupada. Tente novamente.";
+        InvalidateRect(state.window, nullptr, FALSE);
+        return;
+    }
+    HBITMAP bitmap = static_cast<HBITMAP>(GetClipboardData(CF_BITMAP));
+    if (!bitmap) {
+        CloseClipboard();
+        state.notice = L"Copie uma imagem de QR e pressione Ctrl+V.";
+        InvalidateRect(state.window, nullptr, FALSE);
+        return;
+    }
+    std::vector<auth::Account> imported;
+    try {
+        imported = auth::read_qr_bitmap(bitmap);
+    } catch (...) {
+        CloseClipboard();
+        throw;
+    }
+    CloseClipboard();
+    add_imported(state, std::move(imported));
+}
+
 void import_qr(State& state) {
     HMENU menu = CreatePopupMenu();
     if (!menu) throw std::runtime_error("Menu indisponivel");
     AppendMenuW(menu, MF_STRING, 1, L"Escolher imagem de QR...");
     AppendMenuW(menu, MF_STRING, 2, L"Ler QR pela câmera...");
+    AppendMenuW(menu, MF_STRING, 3, L"Colar imagem do QR (Ctrl+V)");
     POINT position{static_cast<LONG>(scale(state, 28)), static_cast<LONG>(scale(state, 205))};
     ClientToScreen(state.window, &position);
     const auto choice = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN,
                                        position.x, position.y, 0, state.window, nullptr);
     DestroyMenu(menu);
+    if (choice == 3) {
+        paste_qr(state);
+        return;
+    }
     if (choice == 2) {
         try {
             auto imported = camera::scan(state.window);
@@ -559,10 +621,39 @@ void paint(HWND window, State& state, HDC hdc) {
     label(graphics, state, L"MSK  AUTENTICADOR",
           RectF(scale(state, 69), scale(state, 13), scale(state, 218), scale(state, 30)),
           13, rgb(224, 239, 242), true);
-    RectF pill(w - scale(state, 158), scale(state, 17), scale(state, 130), scale(state, 23));
-    rounded(graphics, pill, scale(state, 13), rgb(24, 57, 53));
-    label(graphics, state, L"●  COFRE LOCAL", pill, 9, rgb(137, 229, 189), true,
-          StringAlignmentCenter);
+    draw_about_tab(graphics, state, w);
+
+    if (state.about_page) {
+        RectF panel(margin, scale(state, 72), w - margin * 2, scale(state, 320));
+        Color border = rgb(45, 83, 99);
+        rounded(graphics, panel, scale(state, 13), rgb(20, 36, 52), &border, scale(state, 1));
+        label(graphics, state, L"Sobre o módulo",
+              RectF(panel.X + scale(state, 20), panel.Y + scale(state, 17),
+                    panel.Width - scale(state, 40), scale(state, 30)),
+              18, rgb(242, 250, 249), true);
+        label(graphics, state, L"MSK Autenticador  ·  versão " + std::wstring(update::current_version),
+              RectF(panel.X + scale(state, 20), panel.Y + scale(state, 55),
+                    panel.Width - scale(state, 40), scale(state, 24)),
+              11, rgb(159, 191, 199));
+        label(graphics, state, state.about_status,
+              RectF(panel.X + scale(state, 20), panel.Y + scale(state, 91),
+                    panel.Width - scale(state, 40), scale(state, 48)),
+              11, rgb(217, 235, 239));
+        draw_button(graphics, state, 0, L"Verificar atualizações");
+        if (state.update_available) draw_button(graphics, state, 1, L"Instalar atualização");
+        label(graphics, state, update::installed_copy()
+                  ? L"O instalador é validado por SHA-256 antes da instalação."
+                  : L"Para atualizar, use a versão instalada do módulo.",
+              RectF(margin, scale(state, 278), w - margin * 2, scale(state, 34)),
+              10, rgb(136, 165, 183));
+        line(graphics, rgb(37, 54, 71), margin, h - scale(state, 42), w - margin, h - scale(state, 42));
+        label(graphics, state, L"◈  Atualização e informações do módulo",
+              RectF(margin, h - scale(state, 34), w - margin * 2, scale(state, 27)),
+              10, rgb(143, 174, 188));
+        Graphics screen(hdc);
+        screen.DrawImage(&canvas, 0, 0);
+        return;
+    }
 
     RectF hero(margin, scale(state, 69), w - margin * 2, scale(state, 83));
     Color hero_border = rgb(45, 83, 99);
@@ -603,7 +694,7 @@ void paint(HWND window, State& state, HDC hdc) {
               RectF(empty.X + scale(state, 20), empty.Y + scale(state, 24),
                     empty.Width - scale(state, 40), scale(state, 30)),
               16, rgb(226, 240, 242), true);
-        label(graphics, state, L"Use Importar QR para adicionar sua primeira conta.",
+        label(graphics, state, L"Use Adicionar QR ou cole uma imagem com Ctrl+V.",
               RectF(empty.X + scale(state, 20), empty.Y + scale(state, 64),
                     empty.Width - scale(state, 40), scale(state, 25)),
               12, rgb(146, 172, 188));
@@ -648,12 +739,6 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(dark));
             SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(owned.release()));
             SetTimer(window, timer_refresh, 1000, nullptr);
-            if (update::installed_copy()) {
-                auto* current = reinterpret_cast<State*>(GetWindowLongPtrW(window, GWLP_USERDATA));
-                current->update_result = std::make_shared<update::Result>();
-                current->last_update_check = std::chrono::steady_clock::now();
-                update::check_in_background(current->update_result);
-            }
             return 0;
         }
         case WM_ERASEBKGND:
@@ -700,34 +785,25 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 if (state->revealed &&
                     std::chrono::steady_clock::now() - state->last_action > std::chrono::minutes(5)) hide(*state);
                 else if (state->revealed) InvalidateRect(window, nullptr, FALSE);
-                if (state->update_result && !state->update_handled &&
-                    std::chrono::steady_clock::now() - state->last_action > std::chrono::seconds(30)) {
-                    auto result = state->update_result;
-                    bool finished = false;
-                    bool available = false;
+                if (state->manual_update_check && state->update_result && !state->update_handled) {
+                    bool finished = false, available = false, failed = false;
+                    std::wstring version;
                     {
-                        std::lock_guard lock(result->mutex);
-                        finished = result->finished;
-                        available = result->available;
+                        std::lock_guard lock(state->update_result->mutex);
+                        finished = state->update_result->finished;
+                        available = state->update_result->available;
+                        failed = state->update_result->failed;
+                        version = state->update_result->version;
                     }
                     if (finished) {
                         state->update_handled = true;
-                        if (available) {
-                            if (update::launch_verified(*result)) {
-                                DestroyWindow(window);
-                                return 0;
-                            }
-                            state->notice = L"Atualização indisponível. O aplicativo continua funcionando.";
-                            InvalidateRect(window, nullptr, FALSE);
-                        }
+                        state->manual_update_check = false;
+                        state->update_available = available;
+                        state->about_status = failed ? L"Não foi possível consultar ou validar a atualização."
+                            : available ? L"A versão " + version + L" está pronta para instalar."
+                                        : L"Você já está usando a versão mais recente.";
+                        InvalidateRect(window, nullptr, FALSE);
                     }
-                }
-                if (state->update_result && state->update_handled &&
-                    std::chrono::steady_clock::now() - state->last_update_check >= std::chrono::hours(6)) {
-                    state->update_result = std::make_shared<update::Result>();
-                    state->update_handled = false;
-                    state->last_update_check = std::chrono::steady_clock::now();
-                    update::check_in_background(state->update_result);
                 }
             }
             return 0;
@@ -759,11 +835,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                         return 0;
                     }
                 }
-                int hovered = inside(button_rect(*state, 0), x, y) ? 0 :
-                              inside(button_rect(*state, 1), x, y) ? 1 : -1;
-                if (hovered < 0) {
-                    RECT area{};
-                    GetClientRect(window, &area);
+                RECT area{};
+                GetClientRect(window, &area);
+                int hovered = inside(about_tab_bounds(*state, static_cast<float>(area.right)), x, y) ? 10 :
+                              inside(button_rect(*state, 0), x, y) ? 0 :
+                              (state->about_page && state->update_available && inside(button_rect(*state, 1), x, y)) ? 1 : -1;
+                if (hovered < 0 && !state->about_page) {
                     const float bottom = static_cast<float>(area.bottom) - scale(*state, 48);
                     if (y >= content_top(*state) && y < bottom) {
                         for (int i = 0; i < static_cast<int>(state->accounts.size()); ++i) {
@@ -798,6 +875,35 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                 SetFocus(window);
                 const float x = static_cast<float>(GET_X_LPARAM(lparam));
                 const float y = static_cast<float>(GET_Y_LPARAM(lparam));
+                RECT client{};
+                GetClientRect(window, &client);
+                if (inside(about_tab_bounds(*state, static_cast<float>(client.right)), x, y)) {
+                    state->about_page = !state->about_page;
+                    state->hovered = -1;
+                    state->last_action = std::chrono::steady_clock::now();
+                    InvalidateRect(window, nullptr, FALSE);
+                    return 0;
+                }
+                if (state->about_page) {
+                    if (inside(button_rect(*state, 0), x, y)) {
+                        begin_update_check(*state);
+                        return 0;
+                    }
+                    if (state->update_available && inside(button_rect(*state, 1), x, y) && state->update_result) {
+                        if (MessageBoxW(window, L"Instalar a atualização verificada agora? O módulo será fechado durante a instalação.",
+                                        L"Atualizar MSK Autenticador", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES) {
+                            if (update::launch_verified(*state->update_result)) {
+                                DestroyWindow(window);
+                                return 0;
+                            }
+                            state->about_status = L"Não foi possível iniciar o instalador. Tente verificar novamente.";
+                            state->update_available = false;
+                            InvalidateRect(window, nullptr, FALSE);
+                        }
+                        return 0;
+                    }
+                    return 0;
+                }
                 for (int id = 0; id < 2; ++id) {
                     if (inside(button_rect(*state, id), x, y)) {
                         state->focused = id;
@@ -898,13 +1004,20 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return 0;
         case WM_KEYDOWN:
             if (state) {
+                if (!state->about_page && (wparam == L'V' || wparam == L'v') &&
+                    (GetKeyState(VK_CONTROL) & 0x8000)) {
+                    state->last_action = std::chrono::steady_clock::now();
+                    paste_qr(*state);
+                    return 0;
+                }
                 if (wparam == VK_TAB) {
                     state->focused = 1 - state->focused;
                     InvalidateRect(window, nullptr, FALSE);
                     return 0;
                 }
                 if (wparam == VK_RETURN || wparam == VK_SPACE) {
-                    act(*state, state->focused);
+                    if (state->about_page) begin_update_check(*state);
+                    else act(*state, state->focused);
                     return 0;
                 }
                 if (wparam == VK_ESCAPE) {
@@ -914,7 +1027,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             }
             break;
         case WM_MOUSEWHEEL:
-            if (state) {
+            if (state && !state->about_page) {
                 RECT area{};
                 GetClientRect(window, &area);
                 const float available = std::max(0.0f, static_cast<float>(area.bottom) -
@@ -956,6 +1069,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     GdiplusStartupInput startup{};
     ULONG_PTR gdiplus_token = 0;
     if (GdiplusStartup(&gdiplus_token, &startup, nullptr) != Ok) {
+        CoUninitialize();
+        return 1;
+    }
+    try {
+        if (!access::authenticate()) {
+            GdiplusShutdown(gdiplus_token);
+            CoUninitialize();
+            return 0;
+        }
+    } catch (...) {
+        MessageBoxW(nullptr, L"Não foi possível abrir a tela de senha.", L"MSK Autenticador",
+                    MB_OK | MB_ICONERROR);
+        GdiplusShutdown(gdiplus_token);
         CoUninitialize();
         return 1;
     }

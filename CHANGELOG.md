@@ -1,5 +1,15 @@
 # Histórico de versões
 
+## 0.1.6 — senha de acesso e atualização pela aba Sobre
+
+- O módulo solicita a criação de uma senha no primeiro uso e exige a senha para abrir nas próximas vezes.
+- A aba **Sobre** permite verificar e instalar uma atualização validada.
+
+## 0.1.5 — colar QR da área de transferência
+
+- Importação de imagem copiada pelo menu **Adicionar QR** ou pelo atalho **Ctrl+V**.
+- A imagem é lida em memória, sem criar uma cópia em disco.
+
 ## 0.1.4 — janela estreita, câmera, exportação e atualização
 
 - Largura inicial reduzida de 960 para 480 pontos lógicos, com cartões reorganizados.

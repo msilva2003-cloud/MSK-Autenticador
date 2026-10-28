@@ -6,12 +6,13 @@
 
 namespace update {
 
-inline constexpr wchar_t current_version[] = L"0.1.4";
+inline constexpr wchar_t current_version[] = L"0.1.6";
 
 struct Result {
     std::mutex mutex;
     bool finished = false;
     bool available = false;
+    bool failed = false;
     std::wstring installer;
     std::wstring expected_hash;
     std::wstring version;

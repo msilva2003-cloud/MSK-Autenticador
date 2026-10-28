@@ -407,24 +407,18 @@ void save_vault(const std::vector<Account>& accounts) {
     }
 }
 
-std::vector<Account> read_qr_image(const std::wstring& path) {
-    ComPtr<IWICImagingFactory> factory;
-    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
-                                IID_PPV_ARGS(&factory)))) throw std::runtime_error("Leitor de imagem indisponivel");
-    ComPtr<IWICBitmapDecoder> decoder;
-    if (FAILED(factory->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ,
-                                                   WICDecodeMetadataCacheOnLoad, &decoder)))
-        throw std::runtime_error("Imagem do QR invalida");
-    ComPtr<IWICBitmapFrameDecode> frame;
-    if (FAILED(decoder->GetFrame(0, &frame))) throw std::runtime_error("Imagem sem quadro");
+std::vector<Account> read_qr_source(IWICBitmapSource* source) {
     UINT width = 0, height = 0;
-    if (FAILED(frame->GetSize(&width, &height)) || width == 0 || height == 0 ||
+    if (FAILED(source->GetSize(&width, &height)) || width == 0 || height == 0 ||
         static_cast<std::uint64_t>(width) * height > 25'000'000) {
         throw std::runtime_error("Imagem do QR grande ou invalida");
     }
+    ComPtr<IWICImagingFactory> factory;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(&factory)))) throw std::runtime_error("Leitor de imagem indisponivel");
     ComPtr<IWICFormatConverter> converter;
     if (FAILED(factory->CreateFormatConverter(&converter)) ||
-        FAILED(converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppBGRA,
+        FAILED(converter->Initialize(source, GUID_WICPixelFormat32bppBGRA,
                                      WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom))) {
         throw std::runtime_error("Formato de imagem nao suportado");
     }
@@ -439,6 +433,30 @@ std::vector<Account> read_qr_image(const std::wstring& path) {
         wipe(pixels);
         throw;
     }
+}
+
+std::vector<Account> read_qr_image(const std::wstring& path) {
+    ComPtr<IWICImagingFactory> factory;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(&factory)))) throw std::runtime_error("Leitor de imagem indisponivel");
+    ComPtr<IWICBitmapDecoder> decoder;
+    if (FAILED(factory->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ,
+                                                   WICDecodeMetadataCacheOnLoad, &decoder)))
+        throw std::runtime_error("Imagem do QR invalida");
+    ComPtr<IWICBitmapFrameDecode> frame;
+    if (FAILED(decoder->GetFrame(0, &frame))) throw std::runtime_error("Imagem sem quadro");
+    return read_qr_source(frame.Get());
+}
+
+std::vector<Account> read_qr_bitmap(HBITMAP bitmap) {
+    if (!bitmap) throw std::runtime_error("Nenhuma imagem copiada");
+    ComPtr<IWICImagingFactory> factory;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(&factory)))) throw std::runtime_error("Leitor de imagem indisponivel");
+    ComPtr<IWICBitmap> source;
+    if (FAILED(factory->CreateBitmapFromHBITMAP(bitmap, nullptr, WICBitmapUseAlpha, &source)))
+        throw std::runtime_error("Imagem copiada invalida");
+    return read_qr_source(source.Get());
 }
 
 std::vector<Account> read_qr_pixels(const std::uint8_t* pixels, int width, int height) {
