@@ -1,5 +1,10 @@
 # Histórico de versões
 
+## 0.1.7 — ajuste da tela de senha
+
+- Mais espaço para os campos e botões da tela de senha, com dimensões adaptadas à escala do Windows.
+- Centralização da janela de senha na área de trabalho.
+
 ## 0.1.6 — senha de acesso e atualização pela aba Sobre
 
 - O módulo solicita a criação de uma senha no primeiro uso e exige a senha para abrir nas próximas vezes.

@@ -175,27 +175,36 @@ LRESULT CALLBACK dialog_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         state = static_cast<DialogState*>(creation->lpCreateParams);
         SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
         const auto font = reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT));
+        const float dpi = static_cast<float>(GetDpiForSystem()) / 96.0f;
+        const auto px = [dpi](int value) { return static_cast<int>(value * dpi + 0.5f); };
         const wchar_t* instruction = state->setup ? L"Crie uma senha para abrir o módulo (mínimo de 8 caracteres):"
                                                   : L"Digite sua senha para abrir o módulo:";
         CreateWindowExW(0, L"STATIC", instruction, WS_CHILD | WS_VISIBLE,
-                        20, 18, 340, 38, window, nullptr, creation->hInstance, nullptr);
+                        px(24), px(20), px(372), px(state->setup ? 44 : 28),
+                        window, nullptr, creation->hInstance, nullptr);
         state->password = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_PASSWORD | ES_AUTOHSCROLL,
-            20, 62, 340, 28, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(password_id)), creation->hInstance, nullptr);
+            px(24), px(state->setup ? 74 : 66), px(372), px(30), window,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(password_id)), creation->hInstance, nullptr);
         SendMessageW(state->password, EM_LIMITTEXT, 128, 0);
         if (state->setup) {
             CreateWindowExW(0, L"STATIC", L"Confirme a senha:", WS_CHILD | WS_VISIBLE,
-                            20, 98, 340, 22, window, nullptr, creation->hInstance, nullptr);
+                            px(24), px(120), px(372), px(22), window, nullptr, creation->hInstance, nullptr);
             state->confirmation = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_PASSWORD | ES_AUTOHSCROLL,
-                20, 122, 340, 28, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(confirmation_id)), creation->hInstance, nullptr);
+                px(24), px(146), px(372), px(30), window,
+                reinterpret_cast<HMENU>(static_cast<INT_PTR>(confirmation_id)), creation->hInstance, nullptr);
             SendMessageW(state->confirmation, EM_LIMITTEXT, 128, 0);
         }
+        const int button_y = px(state->setup ? 204 : 119);
+        const int button_h = px(34);
         CreateWindowExW(0, L"BUTTON", state->setup ? L"Criar senha" : L"Desbloquear",
             WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
-            170, state->setup ? 166 : 118, 92, 30, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDOK)), creation->hInstance, nullptr);
+            px(186), button_y, px(110), button_h, window,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDOK)), creation->hInstance, nullptr);
         CreateWindowExW(0, L"BUTTON", L"Sair", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-            268, state->setup ? 166 : 118, 92, 30, window, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDCANCEL)), creation->hInstance, nullptr);
+            px(306), button_y, px(90), button_h, window,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDCANCEL)), creation->hInstance, nullptr);
         for (HWND child = GetWindow(window, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT))
             SendMessageW(child, WM_SETFONT, font, TRUE);
         SetFocus(state->password);
@@ -233,6 +242,12 @@ LRESULT CALLBACK dialog_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             return 0;
         }
     }
+    if (message == WM_CTLCOLORSTATIC) {
+        HDC dc = reinterpret_cast<HDC>(wparam);
+        SetTextColor(dc, GetSysColor(COLOR_WINDOWTEXT));
+        SetBkMode(dc, TRANSPARENT);
+        return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
+    }
     if (message == WM_CLOSE && state) {
         state->finished = true;
         DestroyWindow(window);
@@ -256,12 +271,19 @@ bool authenticate() {
     RegisterClassW(&klass);
     DialogState state;
     state.setup = setup;
-    const int height = setup ? 245 : 198;
+    const float dpi = static_cast<float>(GetDpiForSystem()) / 96.0f;
+    const int width = static_cast<int>(440 * dpi + 0.5f);
+    const int height = static_cast<int>((setup ? 300 : 225) * dpi + 0.5f);
     HWND dialog = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, dialog_class,
         setup ? L"Criar senha — MSK Autenticador" : L"Desbloquear — MSK Autenticador",
-        WS_POPUP | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, 400, height,
+        WS_POPUP | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT, CW_USEDEFAULT, width, height,
         nullptr, nullptr, klass.hInstance, &state);
     if (!dialog) return false;
+    RECT work{};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+    const int x = work.left + ((work.right - work.left) - width) / 2;
+    const int y = work.top + ((work.bottom - work.top) - height) / 2;
+    SetWindowPos(dialog, HWND_TOPMOST, x, y, width, height, SWP_NOACTIVATE);
     ShowWindow(dialog, SW_SHOW);
     UpdateWindow(dialog);
     MSG message{};
