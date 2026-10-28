@@ -6,7 +6,7 @@
 
 namespace update {
 
-inline constexpr wchar_t current_version[] = L"0.1.9";
+inline constexpr wchar_t current_version[] = L"0.1.10";
 
 struct Result {
     std::mutex mutex;

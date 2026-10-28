@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## 0.1.10 — confirmação de atualização com o tema do módulo
+
+- A confirmação usa o tema escuro, a tipografia e os botões do Autenticador.
+- Exibe a versão disponível e permite escolher **Atualizar agora** ou **Agora não**.
+- O cancelamento mantém o módulo aberto; a instalação depende da confirmação explícita.
+
 ## 0.1.9 — aviso de atualização no menu Sobre
 
 - Consulta atualizações em toda abertura do módulo, após a entrada com senha.

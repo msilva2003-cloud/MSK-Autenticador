@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(MSKAuthenticator VERSION 0.1.9 LANGUAGES CXX RC)
+project(MSKAuthenticator VERSION 0.1.10 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -25,6 +25,8 @@ add_executable(MSKAuthenticator WIN32
   src/main.cpp
   src/access.cpp
   src/access.h
+  src/ui_dialog.cpp
+  src/ui_dialog.h
   src/authenticator.cpp
   src/authenticator.h
   src/update.cpp

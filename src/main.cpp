@@ -1,5 +1,6 @@
 #include "authenticator.h"
 #include "access.h"
+#include "ui_dialog.h"
 #include "update.h"
 #include "qr_export.h"
 #include "camera.h"
@@ -905,8 +906,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                             ShellExecuteW(window, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
                             return 0;
                         }
-                        if (MessageBoxW(window, L"Instalar a atualização verificada agora? O módulo será fechado durante a instalação.",
-                                        L"Atualizar MSK Autenticador", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES) {
+                        if (ui::confirm_update(window, state->update_result->version)) {
                             if (update::launch_verified(*state->update_result)) {
                                 DestroyWindow(window);
                                 return 0;
