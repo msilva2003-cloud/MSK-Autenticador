@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## 0.1.8 — criação de senha e visual do módulo
+
+- Corrige a derivação da senha com o modo HMAC exigido pelo PBKDF2 do Windows.
+- Tela de senha refeita com a paleta escura e os botões do MSK Autenticador.
+- Mensagens de validação exibidas na própria tela, sem janela de erro separada.
+
 ## 0.1.7 — ajuste da tela de senha
 
 - Mais espaço para os campos e botões da tela de senha, com dimensões adaptadas à escala do Windows.

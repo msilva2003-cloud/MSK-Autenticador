@@ -719,7 +719,7 @@ void paint(HWND window, State& state, HDC hdc) {
           RectF(margin, h - scale(state, 34), w - margin * 2, scale(state, 27)),
           10, rgb(143, 174, 188));
     Graphics screen(hdc);
-    screen.DrawImage(&canvas, 0, 0);
+    screen.DrawImage(&canvas, 0, 0, width, height);
 }
 
 LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
@@ -1099,22 +1099,27 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
     RegisterClassExW(&klass);
     RECT work{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-    const float dpi = static_cast<float>(GetDpiForSystem()) / 96.0f;
     const int work_width = work.right - work.left;
     const int work_height = work.bottom - work.top;
-    const int width = std::min(static_cast<int>(480 * dpi), work_width - static_cast<int>(28 * dpi));
-    const int height = std::min(static_cast<int>(680 * dpi), work_height - static_cast<int>(28 * dpi));
-    const int x = work.left + (work_width - width) / 2;
-    const int y = work.top + (work_height - height) / 2;
     HWND window = CreateWindowExW(0, window_class, L"MSK Autenticador",
-                                  WS_OVERLAPPEDWINDOW, x, y,
-                                  width, height, nullptr, nullptr, instance, nullptr);
+                                  WS_OVERLAPPEDWINDOW,
+                                  work.left + (work_width - 480) / 2,
+                                  work.top + (work_height - 680) / 2,
+                                  480, 680, nullptr, nullptr, instance, nullptr);
     if (!window) {
         GdiplusShutdown(gdiplus_token);
         CoUninitialize();
         return 1;
     }
     ShowWindow(window, show);
+    const float dpi = static_cast<float>(GetDpiForWindow(window)) / 96.0f;
+    if (auto* state = reinterpret_cast<State*>(GetWindowLongPtrW(window, GWLP_USERDATA)))
+        state->dpi = dpi;
+    const int width = std::min(static_cast<int>(480 * dpi), work_width - static_cast<int>(28 * dpi));
+    const int height = std::min(static_cast<int>(680 * dpi), work_height - static_cast<int>(28 * dpi));
+    const int x = work.left + (work_width - width) / 2;
+    const int y = work.top + (work_height - height) / 2;
+    SetWindowPos(window, nullptr, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
     UpdateWindow(window);
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {

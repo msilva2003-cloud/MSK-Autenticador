@@ -59,7 +59,7 @@ std::vector<std::uint8_t> fetch(const std::wstring& url, std::size_t limit) {
         throw std::runtime_error("Endereco de atualizacao invalido");
     const std::wstring host(parts.lpszHostName, parts.dwHostNameLength);
     const std::wstring path(parts.lpszUrlPath, parts.dwUrlPathLength);
-    InternetHandle session{WinHttpOpen(L"MSKAuthenticator/0.1.7", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+    InternetHandle session{WinHttpOpen(L"MSKAuthenticator/0.1.8", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                       WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0)};
     if (!session) throw std::runtime_error("Rede indisponivel");
     WinHttpSetTimeouts(session, 5000, 5000, 10000, 15000);
