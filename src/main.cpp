@@ -8,6 +8,7 @@
 #include <windowsx.h>
 #include <commdlg.h>
 #include <dwmapi.h>
+#include <shellapi.h>
 #include <objbase.h>
 #include <objidl.h>
 #include <gdiplus.h>
@@ -55,6 +56,7 @@ struct State {
     bool update_handled = false;
     bool about_page = false;
     bool update_available = false;
+    bool update_attention_white = false;
     bool manual_update_check = false;
     std::wstring about_status = L"Clique em Verificar atualizações para consultar o GitHub.";
 };
@@ -114,26 +116,26 @@ RectF about_tab_bounds(const State& state, float width) {
 
 void draw_about_tab(Graphics& graphics, const State& state, float width) {
     const auto bounds = about_tab_bounds(state, width);
-    const Color fill = state.hovered == 10 ? rgb(33, 51, 70) : rgb(24, 39, 56);
-    const Color border = rgb(58, 79, 100);
+    const bool attention = state.update_available && !state.about_page;
+    const Color fill = attention ? (state.update_attention_white ? rgb(255, 255, 255) : rgb(210, 48, 58))
+                                : state.hovered == 10 ? rgb(33, 51, 70) : rgb(24, 39, 56);
+    const Color border = attention ? rgb(210, 48, 58) : rgb(58, 79, 100);
+    const Color text_color = attention ? (state.update_attention_white ? rgb(190, 30, 40) : rgb(255, 255, 255))
+                                       : rgb(225, 238, 247);
     rounded(graphics, bounds, scale(state, 8), fill, &border, scale(state, 1));
     label(graphics, state, state.about_page ? L"Contas" : L"Sobre", bounds, 10,
-          rgb(225, 238, 247), true, StringAlignmentCenter);
+          text_color, true, StringAlignmentCenter);
 }
 
 void begin_update_check(State& state) {
-    if (!update::installed_copy()) {
-        state.about_status = L"Atualizações pelo aplicativo estão disponíveis na cópia instalada.";
-        state.update_available = false;
-        InvalidateRect(state.window, nullptr, FALSE);
-        return;
-    }
+    if (state.manual_update_check) return;
     state.update_result = std::make_shared<update::Result>();
     state.update_handled = false;
     state.manual_update_check = true;
     state.update_available = false;
+    state.update_attention_white = false;
     state.about_status = L"Buscando versão e conferindo o instalador...";
-    update::check_in_background(state.update_result);
+    update::check_in_background(state.update_result, update::installed_copy());
     InvalidateRect(state.window, nullptr, FALSE);
 }
 
@@ -640,10 +642,11 @@ void paint(HWND window, State& state, HDC hdc) {
                     panel.Width - scale(state, 40), scale(state, 48)),
               11, rgb(217, 235, 239));
         draw_button(graphics, state, 0, L"Verificar atualizações");
-        if (state.update_available) draw_button(graphics, state, 1, L"Instalar atualização");
+        if (state.update_available) draw_button(graphics, state, 1,
+            update::installed_copy() ? L"Instalar atualização" : L"Baixar atualização");
         label(graphics, state, update::installed_copy()
                   ? L"O instalador é validado por SHA-256 antes da instalação."
-                  : L"Para atualizar, use a versão instalada do módulo.",
+                  : L"Baixar atualização abre a página da nova versão.",
               RectF(margin, scale(state, 278), w - margin * 2, scale(state, 34)),
               10, rgb(136, 165, 183));
         line(graphics, rgb(37, 54, 71), margin, h - scale(state, 42), w - margin, h - scale(state, 42));
@@ -651,7 +654,7 @@ void paint(HWND window, State& state, HDC hdc) {
               RectF(margin, h - scale(state, 34), w - margin * 2, scale(state, 27)),
               10, rgb(143, 174, 188));
         Graphics screen(hdc);
-        screen.DrawImage(&canvas, 0, 0);
+        screen.DrawImage(&canvas, 0, 0, width, height);
         return;
     }
 
@@ -739,6 +742,7 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
             DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(dark));
             SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(owned.release()));
             SetTimer(window, timer_refresh, 1000, nullptr);
+            begin_update_check(*reinterpret_cast<State*>(GetWindowLongPtrW(window, GWLP_USERDATA)));
             return 0;
         }
         case WM_ERASEBKGND:
@@ -773,6 +777,10 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
         }
         case WM_TIMER:
             if (state && wparam == timer_refresh) {
+                if (state->update_available) {
+                    state->update_attention_white = !state->update_attention_white;
+                    if (!state->about_page) InvalidateRect(window, nullptr, FALSE);
+                }
                 if (state->copied_toast_visible &&
                     std::chrono::steady_clock::now() >= state->copied_toast_until) {
                     state->copied_toast_visible = false;
@@ -799,8 +807,9 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                         state->update_handled = true;
                         state->manual_update_check = false;
                         state->update_available = available;
+                        state->update_attention_white = false;
                         state->about_status = failed ? L"Não foi possível consultar ou validar a atualização."
-                            : available ? L"A versão " + version + L" está pronta para instalar."
+                            : available ? L"A versão " + version + L" está disponível."
                                         : L"Você já está usando a versão mais recente.";
                         InvalidateRect(window, nullptr, FALSE);
                     }
@@ -890,6 +899,12 @@ LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lp
                         return 0;
                     }
                     if (state->update_available && inside(button_rect(*state, 1), x, y) && state->update_result) {
+                        if (!update::installed_copy()) {
+                            const auto url = L"https://github.com/msilva2003-cloud/MSK-Autenticador/releases/tag/v" +
+                                             state->update_result->version;
+                            ShellExecuteW(window, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                            return 0;
+                        }
                         if (MessageBoxW(window, L"Instalar a atualização verificada agora? O módulo será fechado durante a instalação.",
                                         L"Atualizar MSK Autenticador", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES) {
                             if (update::launch_verified(*state->update_result)) {

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(MSKAuthenticator VERSION 0.1.8 LANGUAGES CXX RC)
+project(MSKAuthenticator VERSION 0.1.9 LANGUAGES CXX RC)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

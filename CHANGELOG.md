@@ -1,5 +1,11 @@
 # Histórico de versões
 
+## 0.1.9 — aviso de atualização no menu Sobre
+
+- Consulta atualizações em toda abertura do módulo, após a entrada com senha.
+- O menu **Sobre** alterna entre vermelho e branco a cada segundo quando há uma versão nova.
+- A edição portátil também avisa sobre versões novas e permite abrir a página de download.
+
 ## 0.1.8 — criação de senha e visual do módulo
 
 - Corrige a derivação da senha com o modo HMAC exigido pelo PBKDF2 do Windows.

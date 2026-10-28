@@ -6,7 +6,7 @@
 
 namespace update {
 
-inline constexpr wchar_t current_version[] = L"0.1.8";
+inline constexpr wchar_t current_version[] = L"0.1.9";
 
 struct Result {
     std::mutex mutex;
@@ -19,7 +19,7 @@ struct Result {
 };
 
 bool installed_copy();
-void check_in_background(const std::shared_ptr<Result>& result);
+void check_in_background(const std::shared_ptr<Result>& result, bool download_installer = true);
 bool launch_verified(const Result& result);
 
 } // namespace update
